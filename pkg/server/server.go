@@ -38,6 +38,7 @@ const (
 	ToolUsergroupsCreate            = "usergroups_create"
 	ToolUsergroupsUpdate            = "usergroups_update"
 	ToolUsergroupsUsersUpdate       = "usergroups_users_update"
+	ToolSavedList                   = "saved_list"
 )
 
 var ValidToolNames = []string{
@@ -54,6 +55,7 @@ var ValidToolNames = []string{
 	ToolUsergroupsCreate,
 	ToolUsergroupsUpdate,
 	ToolUsergroupsUsersUpdate,
+	ToolSavedList,
 }
 
 func ValidateEnabledTools(tools []string) error {
@@ -411,6 +413,19 @@ func NewMCPServer(provider *provider.ApiProvider, logger *zap.Logger, enabledToo
 				mcp.Description("Comma-separated user IDs that will become the COMPLETE member list (e.g., 'U0123456789,U9876543210'). All current members not in this list will be removed."),
 			),
 		), usergroupsHandler.UsergroupsUsersUpdateHandler)
+	}
+
+	// Saved items (Save for Later)
+	savedHandler := handler.NewSavedHandler(provider, logger)
+	if shouldAddTool(ToolSavedList, enabledTools, "SLACK_MCP_SAVED_LIST_TOOL") {
+		s.AddTool(mcp.NewTool(ToolSavedList,
+			mcp.WithDescription("List your 'Save for Later' items from Slack. Returns saved messages with channel, timestamp, state, and due dates. Use cursor for pagination."),
+			mcp.WithTitleAnnotation("List Saved Items"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithString("cursor",
+				mcp.Description("Cursor for pagination. Use the value from the last row's cursor column in the previous response."),
+			),
+		), savedHandler.SavedListHandler)
 	}
 
 	logger.Info("Authenticating with Slack API...",

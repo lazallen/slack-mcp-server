@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +24,40 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 )
+
+// SavedItem represents a single "Save for Later" item from Slack's internal API.
+type SavedItem struct {
+	ItemID          string `json:"item_id"`
+	ItemType        string `json:"item_type"`
+	DateCreated     int64  `json:"date_created"`
+	DateDue         int64  `json:"date_due"`
+	DateCompleted   int64  `json:"date_completed"`
+	DateUpdated     int64  `json:"date_updated"`
+	IsArchived      bool   `json:"is_archived"`
+	DateSnoozedUntil int64 `json:"date_snoozed_until"`
+	Ts              string `json:"ts"`
+	State           string `json:"state"`
+}
+
+// SavedListCounts contains aggregate counts for saved items.
+type SavedListCounts struct {
+	UncompletedCount        int `json:"uncompleted_count"`
+	UncompletedOverdueCount int `json:"uncompleted_overdue_count"`
+	ArchivedCount           int `json:"archived_count"`
+	CompletedCount          int `json:"completed_count"`
+	TotalCount              int `json:"total_count"`
+}
+
+// SavedListResponse is the response from Slack's internal saved.list API.
+type SavedListResponse struct {
+	Ok               bool            `json:"ok"`
+	Error            string          `json:"error,omitempty"`
+	SavedItems       []SavedItem     `json:"saved_items"`
+	Counts           SavedListCounts `json:"counts"`
+	ResponseMetadata struct {
+		NextCursor string `json:"next_cursor"`
+	} `json:"response_metadata"`
+}
 
 const usersNotReadyMsg = "users cache is not ready yet, sync process is still running... please wait"
 const channelsNotReadyMsg = "channels cache is not ready yet, sync process is still running... please wait"
@@ -208,6 +244,9 @@ type SlackAPI interface {
 	CreateUserGroupContext(ctx context.Context, userGroup slack.UserGroup, options ...slack.CreateUserGroupOption) (slack.UserGroup, error)
 	UpdateUserGroupContext(ctx context.Context, userGroupID string, options ...slack.UpdateUserGroupsOption) (slack.UserGroup, error)
 	UpdateUserGroupMembersContext(ctx context.Context, userGroup string, members string, options ...slack.UpdateUserGroupMembersOption) (slack.UserGroup, error)
+
+	// Saved items (undocumented internal API)
+	SavedListContext(ctx context.Context, cursor string) (*SavedListResponse, error)
 }
 
 type MCPSlackClient struct {
@@ -455,6 +494,25 @@ func (c *MCPSlackClient) UpdateUserGroupContext(ctx context.Context, userGroupID
 
 func (c *MCPSlackClient) UpdateUserGroupMembersContext(ctx context.Context, userGroup string, members string, options ...slack.UpdateUserGroupMembersOption) (slack.UserGroup, error) {
 	return c.slackClient.UpdateUserGroupMembersContext(ctx, userGroup, members, options...)
+}
+
+func (c *MCPSlackClient) SavedListContext(ctx context.Context, cursor string) (*SavedListResponse, error) {
+	form := url.Values{}
+	if cursor != "" {
+		form.Set("cursor", cursor)
+	}
+	resp, err := c.edgeClient.PostForm(ctx, "saved.list", form)
+	if err != nil {
+		return nil, fmt.Errorf("saved.list request failed: %w", err)
+	}
+	var result SavedListResponse
+	if err := c.edgeClient.ParseResponse(&result, resp); err != nil {
+		return nil, fmt.Errorf("saved.list parse failed: %w", err)
+	}
+	if !result.Ok {
+		return nil, fmt.Errorf("saved.list API error: %s", result.Error)
+	}
+	return &result, nil
 }
 
 func (c *MCPSlackClient) IsEnterprise() bool {
