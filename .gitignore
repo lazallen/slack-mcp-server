@@ -14,4 +14,5 @@
 /npm/slack-mcp-server/LICENSE
 /npm/slack-mcp-server/README.md
 docker-compose.release.yml
-.claude/
+.claude/*
+!.claude/skills/

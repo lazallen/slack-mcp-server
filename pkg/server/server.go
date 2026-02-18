@@ -555,11 +555,29 @@ func buildErrorRecoveryMiddleware(logger *zap.Logger) server.ToolHandlerMiddlewa
 					zap.String("tool", req.Params.Name),
 					zap.Error(err),
 				)
-				return mcp.NewToolResultError(err.Error()), nil
+				errMsg := err.Error()
+				if isSlackAuthError(errMsg) {
+					errMsg = fmt.Sprintf(
+						"Slack authentication failed (%s). Your xoxc/xoxd browser session tokens "+
+							"have expired. Run the /slack-token-refresh skill to automatically refresh them.",
+						errMsg,
+					)
+				}
+				return mcp.NewToolResultError(errMsg), nil
 			}
 			return res, nil
 		}
 	}
+}
+
+func isSlackAuthError(msg string) bool {
+	authErrors := []string{"invalid_auth", "not_authed", "token_expired", "token_revoked"}
+	for _, e := range authErrors {
+		if strings.Contains(msg, e) {
+			return true
+		}
+	}
+	return false
 }
 
 func buildLoggerMiddleware(logger *zap.Logger) server.ToolHandlerMiddleware {
