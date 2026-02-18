@@ -247,6 +247,7 @@ type SlackAPI interface {
 
 	// Saved items (undocumented internal API)
 	SavedListContext(ctx context.Context, cursor string) (*SavedListResponse, error)
+	SavedCompleteContext(ctx context.Context, channel, ts string) error
 }
 
 type MCPSlackClient struct {
@@ -513,6 +514,37 @@ func (c *MCPSlackClient) SavedListContext(ctx context.Context, cursor string) (*
 		return nil, fmt.Errorf("saved.list API error: %s", result.Error)
 	}
 	return &result, nil
+}
+
+// SavedCompleteResponse is the response from Slack's internal saved.update API.
+type SavedCompleteResponse struct {
+	Ok    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
+func (c *MCPSlackClient) SavedCompleteContext(ctx context.Context, channel, ts string) error {
+	form := url.Values{}
+	form.Set("item_type", "message")
+	form.Set("item_id", channel)
+	form.Set("ts", ts)
+	form.Set("date_due", "0")
+	form.Set("mark", "completed")
+	form.Set("_x_reason", "manually_mark_completed")
+	form.Set("_x_mode", "online")
+	form.Set("_x_sonic", "true")
+	form.Set("_x_app_name", "client")
+	resp, err := c.edgeClient.PostForm(ctx, "saved.update", form)
+	if err != nil {
+		return fmt.Errorf("saved.update request failed: %w", err)
+	}
+	var result SavedCompleteResponse
+	if err := c.edgeClient.ParseResponse(&result, resp); err != nil {
+		return fmt.Errorf("saved.update parse failed: %w", err)
+	}
+	if !result.Ok {
+		return fmt.Errorf("saved.update API error: %s", result.Error)
+	}
+	return nil
 }
 
 func (c *MCPSlackClient) IsEnterprise() bool {

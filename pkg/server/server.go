@@ -39,6 +39,7 @@ const (
 	ToolUsergroupsUpdate            = "usergroups_update"
 	ToolUsergroupsUsersUpdate       = "usergroups_users_update"
 	ToolSavedList                   = "saved_list"
+	ToolSavedComplete               = "saved_complete"
 )
 
 var ValidToolNames = []string{
@@ -56,6 +57,7 @@ var ValidToolNames = []string{
 	ToolUsergroupsUpdate,
 	ToolUsergroupsUsersUpdate,
 	ToolSavedList,
+	ToolSavedComplete,
 }
 
 func ValidateEnabledTools(tools []string) error {
@@ -426,6 +428,22 @@ func NewMCPServer(provider *provider.ApiProvider, logger *zap.Logger, enabledToo
 				mcp.Description("Cursor for pagination. Use the value from the last row's cursor column in the previous response."),
 			),
 		), savedHandler.SavedListHandler)
+	}
+
+	if shouldAddTool(ToolSavedComplete, enabledTools, "SLACK_MCP_SAVED_COMPLETE_TOOL") {
+		s.AddTool(mcp.NewTool(ToolSavedComplete,
+			mcp.WithDescription("Mark a 'Save for Later' item as complete in Slack."),
+			mcp.WithTitleAnnotation("Complete Saved Item"),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithString("channel",
+				mcp.Required(),
+				mcp.Description("ID of the channel or DM containing the saved message (e.g., C1234567890, D1234567890)."),
+			),
+			mcp.WithString("ts",
+				mcp.Required(),
+				mcp.Description("Timestamp of the saved message in format 1234567890.123456."),
+			),
+		), savedHandler.SavedCompleteHandler)
 	}
 
 	logger.Info("Authenticating with Slack API...",

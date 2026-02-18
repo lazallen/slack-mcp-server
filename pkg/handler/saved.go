@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -116,6 +117,27 @@ func (h *SavedHandler) SavedListHandler(ctx context.Context, request mcp.CallToo
 	}
 
 	return mcp.NewToolResultText(string(csvBytes)), nil
+}
+
+func (h *SavedHandler) SavedCompleteHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	h.logger.Debug("SavedCompleteHandler called", zap.Any("params", request.Params))
+
+	channel := request.GetString("channel", "")
+	if channel == "" {
+		return nil, fmt.Errorf("channel is required")
+	}
+
+	ts := request.GetString("ts", "")
+	if ts == "" {
+		return nil, fmt.Errorf("ts is required")
+	}
+
+	if err := h.apiProvider.Slack().SavedCompleteContext(ctx, channel, ts); err != nil {
+		h.logger.Error("SavedCompleteContext failed", zap.Error(err))
+		return nil, err
+	}
+
+	return mcp.NewToolResultText("Item marked as complete."), nil
 }
 
 // fetchMessageText retrieves a single message by channel + ts and returns (username, text).
