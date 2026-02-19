@@ -513,19 +513,24 @@ func (ch *ConversationsHandler) ConversationsHistoryHandler(ctx context.Context,
 		Cursor:    params.cursor,
 		Inclusive: false,
 	}
-	history, err := ch.apiProvider.Slack().GetConversationHistoryContext(ctx, &historyParams)
-	if err != nil {
-		ch.logger.Error("GetConversationHistoryContext failed", zap.Error(err))
-		return nil, err
+
+	var allSlackMessages []slack.Message
+	for {
+		history, err := ch.apiProvider.Slack().GetConversationHistoryContext(ctx, &historyParams)
+		if err != nil {
+			ch.logger.Error("GetConversationHistoryContext failed", zap.Error(err))
+			return nil, err
+		}
+		ch.logger.Debug("Fetched conversation history page", zap.Int("message_count", len(history.Messages)))
+		allSlackMessages = append(allSlackMessages, history.Messages...)
+		if !history.HasMore || history.ResponseMetaData.NextCursor == "" {
+			break
+		}
+		historyParams.Cursor = history.ResponseMetaData.NextCursor
 	}
 
-	ch.logger.Debug("Fetched conversation history", zap.Int("message_count", len(history.Messages)))
-
-	messages := ch.convertMessagesFromHistory(history.Messages, params.channel, params.activity)
-
-	if len(messages) > 0 && history.HasMore {
-		messages[len(messages)-1].Cursor = history.ResponseMetaData.NextCursor
-	}
+	ch.logger.Debug("Fetched all conversation history", zap.Int("total_message_count", len(allSlackMessages)))
+	messages := ch.convertMessagesFromHistory(allSlackMessages, params.channel, params.activity)
 	return marshalMessagesToCSV(messages)
 }
 
@@ -553,17 +558,24 @@ func (ch *ConversationsHandler) ConversationsRepliesHandler(ctx context.Context,
 		Cursor:    params.cursor,
 		Inclusive: false,
 	}
-	replies, hasMore, nextCursor, err := ch.apiProvider.Slack().GetConversationRepliesContext(ctx, &repliesParams)
-	if err != nil {
-		ch.logger.Error("GetConversationRepliesContext failed", zap.Error(err))
-		return nil, err
-	}
-	ch.logger.Debug("Fetched conversation replies", zap.Int("count", len(replies)))
 
-	messages := ch.convertMessagesFromHistory(replies, params.channel, params.activity)
-	if len(messages) > 0 && hasMore {
-		messages[len(messages)-1].Cursor = nextCursor
+	var allReplies []slack.Message
+	for {
+		replies, hasMore, nextCursor, err := ch.apiProvider.Slack().GetConversationRepliesContext(ctx, &repliesParams)
+		if err != nil {
+			ch.logger.Error("GetConversationRepliesContext failed", zap.Error(err))
+			return nil, err
+		}
+		ch.logger.Debug("Fetched conversation replies page", zap.Int("count", len(replies)))
+		allReplies = append(allReplies, replies...)
+		if !hasMore || nextCursor == "" {
+			break
+		}
+		repliesParams.Cursor = nextCursor
 	}
+
+	ch.logger.Debug("Fetched all conversation replies", zap.Int("total_count", len(allReplies)))
+	messages := ch.convertMessagesFromHistory(allReplies, params.channel, params.activity)
 	return marshalMessagesToCSV(messages)
 }
 
@@ -584,18 +596,28 @@ func (ch *ConversationsHandler) ConversationsSearchHandler(ctx context.Context, 
 		Count:         params.limit,
 		Page:          params.page,
 	}
-	messagesRes, _, err := ch.apiProvider.Slack().SearchContext(ctx, params.query, searchParams)
-	if err != nil {
-		ch.logger.Error("Slack SearchContext failed", zap.Error(err))
-		return nil, err
-	}
-	ch.logger.Debug("Search completed", zap.Int("matches", len(messagesRes.Matches)))
 
-	messages := ch.convertMessagesFromSearch(messagesRes.Matches)
-	if len(messages) > 0 && messagesRes.Pagination.Page < messagesRes.Pagination.PageCount {
-		nextCursor := fmt.Sprintf("page:%d", messagesRes.Pagination.Page+1)
-		messages[len(messages)-1].Cursor = base64.StdEncoding.EncodeToString([]byte(nextCursor))
+	var allMatches []slack.SearchMessage
+	for {
+		messagesRes, _, err := ch.apiProvider.Slack().SearchContext(ctx, params.query, searchParams)
+		if err != nil {
+			ch.logger.Error("Slack SearchContext failed", zap.Error(err))
+			return nil, err
+		}
+		ch.logger.Debug("Search page completed",
+			zap.Int("matches", len(messagesRes.Matches)),
+			zap.Int("page", messagesRes.Pagination.Page),
+			zap.Int("page_count", messagesRes.Pagination.PageCount),
+		)
+		allMatches = append(allMatches, messagesRes.Matches...)
+		if messagesRes.Pagination.Page >= messagesRes.Pagination.PageCount {
+			break
+		}
+		searchParams.Page = messagesRes.Pagination.Page + 1
 	}
+
+	ch.logger.Debug("Search completed", zap.Int("total_matches", len(allMatches)))
+	messages := ch.convertMessagesFromSearch(allMatches)
 	return marshalMessagesToCSV(messages)
 }
 

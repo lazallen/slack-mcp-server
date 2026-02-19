@@ -112,14 +112,9 @@ func (ch *ChannelsHandler) ChannelsHandler(ctx context.Context, request mcp.Call
 
 	sortType := request.GetString("sort", "popularity")
 	types := request.GetString("channel_types", provider.PubChanType)
-	cursor := request.GetString("cursor", "")
-	limit := request.GetInt("limit", 0)
-
 	ch.logger.Debug("Request parameters",
 		zap.String("sort", sortType),
 		zap.String("channel_types", types),
-		zap.String("cursor", cursor),
-		zap.Int("limit", limit),
 	)
 
 	// MCP Inspector v0.14.0 has issues with Slice type
@@ -142,39 +137,13 @@ func (ch *ChannelsHandler) ChannelsHandler(ctx context.Context, request mcp.Call
 
 	ch.logger.Debug("Validated channel types", zap.Strings("types", channelTypes))
 
-	if limit == 0 {
-		limit = 100
-		ch.logger.Debug("Limit not provided, using default", zap.Int("limit", limit))
-	}
-	if limit > 999 {
-		ch.logger.Warn("Limit exceeds maximum, capping to 999", zap.Int("requested", limit))
-		limit = 999
-	}
-
-	var (
-		nextcur     string
-		channelList []Channel
-	)
-
 	allChannels := ch.apiProvider.ProvideChannelsMaps().Channels
 	ch.logger.Debug("Total channels available", zap.Int("count", len(allChannels)))
 
-	channels := filterChannelsByTypes(allChannels, channelTypes)
-	ch.logger.Debug("Channels after filtering by type", zap.Int("count", len(channels)))
+	chans := filterChannelsByTypes(allChannels, channelTypes)
+	ch.logger.Debug("Returning all channels of requested types", zap.Int("count", len(chans)))
 
-	var chans []provider.Channel
-
-	chans, nextcur = paginateChannels(
-		channels,
-		cursor,
-		limit,
-	)
-
-	ch.logger.Debug("Pagination results",
-		zap.Int("returned_count", len(chans)),
-		zap.Bool("has_next_page", nextcur != ""),
-	)
-
+	var channelList []Channel
 	for _, channel := range chans {
 		channelList = append(channelList, Channel{
 			ID:          channel.ID,
@@ -193,11 +162,6 @@ func (ch *ChannelsHandler) ChannelsHandler(ctx context.Context, request mcp.Call
 		})
 	default:
 		ch.logger.Debug("No sorting applied", zap.String("sort_type", sortType))
-	}
-
-	if len(channelList) > 0 && nextcur != "" {
-		channelList[len(channelList)-1].Cursor = nextcur
-		ch.logger.Debug("Added cursor to last channel", zap.String("cursor", nextcur))
 	}
 
 	csvBytes, err := gocsv.MarshalBytes(&channelList)

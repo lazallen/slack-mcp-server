@@ -48,11 +48,22 @@ func (h *SavedHandler) SavedListHandler(ctx context.Context, request mcp.CallToo
 
 	cursor := request.GetString("cursor", "")
 
-	result, err := h.apiProvider.Slack().SavedListContext(ctx, cursor)
-	if err != nil {
-		h.logger.Error("SavedListContext failed", zap.Error(err))
-		return nil, err
+	// Fetch all pages of saved items transparently
+	var allSavedItems []provider.SavedItem
+	for {
+		result, err := h.apiProvider.Slack().SavedListContext(ctx, cursor)
+		if err != nil {
+			h.logger.Error("SavedListContext failed", zap.Error(err))
+			return nil, err
+		}
+		h.logger.Debug("Fetched saved items page", zap.Int("count", len(result.SavedItems)))
+		allSavedItems = append(allSavedItems, result.SavedItems...)
+		if result.ResponseMetadata.NextCursor == "" {
+			break
+		}
+		cursor = result.ResponseMetadata.NextCursor
 	}
+	h.logger.Debug("Fetched all saved items", zap.Int("total_count", len(allSavedItems)))
 
 	// Get workspace URL for building permalinks
 	workspaceURL := ""
@@ -65,7 +76,7 @@ func (h *SavedHandler) SavedListHandler(ctx context.Context, request mcp.CallToo
 	usersCache := h.apiProvider.ProvideUsersMap()
 
 	var rows []SavedItemRow
-	for _, item := range result.SavedItems {
+	for _, item := range allSavedItems {
 		channelName := ""
 		if channelsCache != nil {
 			if ch, ok := channelsCache.Channels[item.ItemID]; ok {
@@ -103,11 +114,6 @@ func (h *SavedHandler) SavedListHandler(ctx context.Context, request mcp.CallToo
 			Text:        msgText,
 			Link:        link,
 		})
-	}
-
-	// Add pagination cursor to last row
-	if len(rows) > 0 && result.ResponseMetadata.NextCursor != "" {
-		rows[len(rows)-1].Cursor = result.ResponseMetadata.NextCursor
 	}
 
 	csvBytes, err := gocsv.MarshalBytes(&rows)
