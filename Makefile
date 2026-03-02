@@ -50,6 +50,11 @@ clean: ## Clean up all build artifacts
 build: clean tidy format ## Build the project
 	go build $(COMMON_BUILD_ARGS) -o ./build/$(BINARY_NAME) ./cmd/slack-mcp-server
 
+INSTALL_DIR ?= $(HOME)/bin
+.PHONY: install
+install: build ## Build and install binary to INSTALL_DIR (default: ~/bin)
+	install -m 755 ./build/$(BINARY_NAME) $(INSTALL_DIR)/$(BINARY_NAME)
+
 .PHONY: build-all-platforms
 build-all-platforms: clean tidy format ## Build the project for all platforms
 	$(foreach os,$(OSES),$(foreach arch,$(ARCHS), \

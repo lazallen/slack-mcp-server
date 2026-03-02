@@ -14,6 +14,20 @@ SLACK_MCP_SAVED_LIST_TOOL=true
 SLACK_MCP_SAVED_COMPLETE_TOOL=true
 ```
 
+## Install (Claude Code user-level)
+
+```bash
+make install          # builds and copies to ~/bin/slack-mcp-server
+```
+
+Then configure `~/.claude.json` — see `instructions.md` in the parent repo.
+
+To store/update Keychain tokens (required for wrapper script, includes no-prompt ACL):
+```bash
+./scripts/keychain-setup.sh        # interactive
+./scripts/keychain-setup.sh xoxc-... xoxd-...  # non-interactive
+```
+
 ## Build & run
 
 ```bash

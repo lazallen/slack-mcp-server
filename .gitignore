@@ -16,3 +16,4 @@
 docker-compose.release.yml
 .claude/*
 !.claude/skills/
+!.claude/commands/
